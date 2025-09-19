@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>PyCord</title>
+</head>
+<body>
+  <ul id="messages"></ul>
+  <input id="myMessage" autocomplete="off"/><button onclick="sendMessage()">Send</button>
+
+  <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+  <script>
+    var socket = io();
+    socket.on("message", function(msg) {
+      var li = document.createElement("li");
+      li.innerText = msg;
+      document.getElementById("messages").appendChild(li);
+    });
+    function sendMessage(){
+      var input = document.getElementById("myMessage");
+      socket.send(input.value);
+      input.value = "";
+    }
+  </script>
+</body>
+</html>
