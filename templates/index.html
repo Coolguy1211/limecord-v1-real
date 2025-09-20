@@ -17,6 +17,15 @@
       <h3>Channels</h3>
       <ul id="channels"></ul>
     </div>
+    <div id="friends-list">
+      <h3>Friends</h3>
+      <ul id="friends"></ul>
+      <form id="add-friend-form">
+        <input id="friendName" autocomplete="off" placeholder="Add Friend" /><button>Add</button>
+      </form>
+      <h4>Friend Requests</h4>
+      <ul id="friend-requests"></ul>
+    </div>
     <div id="chat-container">
       <ul id="messages"></ul>
       <form id="message-form" action="">
@@ -127,6 +136,49 @@
 
     socket.on("message", function(data) {
       addMessage(data);
+    });
+
+    document.getElementById('add-friend-form').onsubmit = function(e) {
+      e.preventDefault();
+      var input = document.getElementById('friendName');
+      if (input.value) {
+        socket.emit('add_friend', input.value);
+        input.value = '';
+      }
+    };
+
+    socket.on('friend_list', function(friends) {
+      var friendsUl = document.getElementById('friends');
+      friendsUl.innerHTML = '';
+      friends.forEach(function(friend) {
+        var li = document.createElement("li");
+        li.innerText = friend;
+        friendsUl.appendChild(li);
+      });
+    });
+
+    socket.on('friend_requests', function(requests) {
+      var requestsUl = document.getElementById('friend-requests');
+      requestsUl.innerHTML = '';
+      requests.forEach(function(request) {
+        var li = document.createElement("li");
+        li.innerText = request.username;
+        var acceptButton = document.createElement('button');
+        acceptButton.innerText = 'Accept';
+        acceptButton.onclick = function() {
+          socket.emit('accept_friend_request', request.id);
+        };
+        li.appendChild(acceptButton);
+        requestsUl.appendChild(li);
+      });
+    });
+
+    socket.on('friend_request_sent', function(data) {
+        alert(data.message);
+    });
+
+    socket.on('error', function(data) {
+        alert(data.message);
     });
   </script>
 </body>
