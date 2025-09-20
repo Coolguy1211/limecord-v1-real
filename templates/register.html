@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Register for Limecord</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body, html {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            height: 100%;
+        }
+        #register-container {
+            text-align: center;
+            background-color: #2f3136;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        #register-container h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        #register-container p {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+        }
+        #register-form input {
+            padding: 15px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 5px;
+            background-color: #40444b;
+            color: #dcddde;
+            width: 300px;
+            margin-bottom: 10px;
+        }
+        #register-form button {
+            padding: 15px 20px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 5px;
+            background-color: #7289da;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #register-form button:hover {
+            background-color: #677bc4;
+        }
+        .login-link {
+            margin-top: 20px;
+        }
+        .login-link a {
+            color: #7289da;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="register-container">
+        <h1>Create an account</h1>
+        <form id="register-form" method="post">
+            <input type="text" name="username" placeholder="Enter your username" required><br>
+            <input type="password" name="password" placeholder="Enter your password" required><br>
+            <button type="submit">Register</button>
+        </form>
+        <div class="login-link">
+            <p>Already have an account? <a href="{{ url_for('login') }}">Login</a></p>
+        </div>
+    </div>
+</body>
+</html>

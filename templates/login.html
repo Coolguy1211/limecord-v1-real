@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Welcome to Limecord</title>
+    <title>Login to Limecord</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
         body, html {
@@ -11,22 +11,22 @@
             flex-direction: column;
             height: 100%;
         }
-        #welcome-container {
+        #login-container {
             text-align: center;
             background-color: #2f3136;
             padding: 40px;
             border-radius: 10px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         }
-        #welcome-container h1 {
+        #login-container h1 {
             font-size: 2.5rem;
             margin-bottom: 10px;
         }
-        #welcome-container p {
+        #login-container p {
             font-size: 1.2rem;
             margin-bottom: 20px;
         }
-        #username-form input {
+        #login-form input {
             padding: 15px;
             font-size: 1rem;
             border: none;
@@ -34,9 +34,9 @@
             background-color: #40444b;
             color: #dcddde;
             width: 300px;
-            margin-right: 10px;
+            margin-bottom: 10px;
         }
-        #username-form button {
+        #login-form button {
             padding: 15px 20px;
             font-size: 1rem;
             border: none;
@@ -46,19 +46,30 @@
             cursor: pointer;
             transition: background-color 0.3s;
         }
-        #username-form button:hover {
+        #login-form button:hover {
             background-color: #677bc4;
+        }
+        .register-link {
+            margin-top: 20px;
+        }
+        .register-link a {
+            color: #7289da;
+            text-decoration: none;
         }
     </style>
 </head>
 <body>
-    <div id="welcome-container">
-        <h1>Welcome to Limecord</h1>
-        <p>A new place to chat with your mates. Create a server or join one!</p>
-        <form id="username-form" action="/chat" method="get">
-            <input type="text" name="username" placeholder="Enter your username" required>
-            <button type="submit">Join the Crew</button>
+    <div id="login-container">
+        <h1>Welcome back to Limecord</h1>
+        <p>We're so excited to see you again!</p>
+        <form id="login-form" method="post">
+            <input type="text" name="username" placeholder="Enter your username" required><br>
+            <input type="password" name="password" placeholder="Enter your password" required><br>
+            <button type="submit">Login</button>
         </form>
+        <div class="register-link">
+            <p>Need an account? <a href="{{ url_for('register') }}">Register</a></p>
+        </div>
     </div>
 </body>
 </html>
