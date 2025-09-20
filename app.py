@@ -23,6 +23,7 @@ def init_db():
         cursor.execute("CREATE TABLE IF NOT EXISTS server_members (id INTEGER PRIMARY KEY, user_id INTEGER, server_id INTEGER, FOREIGN KEY(user_id) REFERENCES users(id), FOREIGN KEY(server_id) REFERENCES servers(id))")
         cursor.execute("CREATE TABLE IF NOT EXISTS channels (id INTEGER PRIMARY KEY, name TEXT, server_id INTEGER, FOREIGN KEY(server_id) REFERENCES servers(id))")
         cursor.execute("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, user_id INTEGER, channel_id INTEGER, message TEXT, is_image BOOLEAN, FOREIGN KEY(user_id) REFERENCES users(id), FOREIGN KEY(channel_id) REFERENCES channels(id))")
+        cursor.execute("CREATE TABLE IF NOT EXISTS friends (id INTEGER PRIMARY KEY, user1_id INTEGER, user2_id INTEGER, status TEXT, FOREIGN KEY(user1_id) REFERENCES users(id), FOREIGN KEY(user2_id) REFERENCES users(id))")
         conn.commit()
 
 @app.route("/")
@@ -47,6 +48,8 @@ def set_username(username):
             user_id = cursor.lastrowid
     users[request.sid] = {"user_id": user_id, "username": username, "current_channel": None}
     get_servers()
+    get_friends_list()
+    get_friend_requests()
 
 @socketio.on('get_servers')
 def get_servers():
@@ -123,6 +126,68 @@ def handle_image(image_data):
 def on_disconnect():
     if request.sid in users:
         del users[request.sid]
+
+@socketio.on('add_friend')
+def add_friend(friend_username):
+    if request.sid in users:
+        user_id = users[request.sid]['user_id']
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM users WHERE username = ?", (friend_username,))
+            friend = cursor.fetchone()
+            if friend:
+                friend_id = friend[0]
+                if user_id == friend_id:
+                    emit('error', {'message': "You can't add yourself as a friend."})
+                    return
+                cursor.execute("SELECT id FROM friends WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)", (user_id, friend_id, friend_id, user_id))
+                if cursor.fetchone():
+                    emit('error', {'message': 'Friend request already sent or you are already friends.'})
+                    return
+                cursor.execute("INSERT INTO friends (user1_id, user2_id, status) VALUES (?, ?, ?)", (user_id, friend_id, 'pending'))
+                conn.commit()
+                emit('friend_request_sent', {'message': 'Friend request sent.'})
+
+@socketio.on('get_friends')
+def get_friends_list():
+    if request.sid in users:
+        user_id = users[request.sid]['user_id']
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT u.username FROM users u JOIN friends f ON u.id = f.user2_id WHERE f.user1_id = ? AND f.status = 'accepted'
+                UNION
+                SELECT u.username FROM users u JOIN friends f ON u.id = f.user1_id WHERE f.user2_id = ? AND f.status = 'accepted'
+            """, (user_id, user_id))
+            friends = [row[0] for row in cursor.fetchall()]
+            emit('friend_list', friends)
+
+@socketio.on('get_friend_requests')
+def get_friend_requests():
+    if request.sid in users:
+        user_id = users[request.sid]['user_id']
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT f.id, u.username FROM friends f JOIN users u ON f.user1_id = u.id
+                WHERE f.user2_id = ? AND f.status = 'pending'
+            """, (user_id,))
+            requests = [{"id": row[0], "username": row[1]} for row in cursor.fetchall()]
+            emit('friend_requests', requests)
+
+@socketio.on('accept_friend_request')
+def accept_friend_request(request_id):
+    if request.sid in users:
+        user_id = users[request.sid]['user_id']
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            # Ensure the user is the recipient of the request
+            cursor.execute("SELECT id FROM friends WHERE id = ? AND user2_id = ?", (request_id, user_id))
+            if cursor.fetchone():
+                cursor.execute("UPDATE friends SET status = 'accepted' WHERE id = ?", (request_id,))
+                conn.commit()
+                get_friends_list()
+                get_friend_requests()
 
 if __name__ == "__main__":
     init_db()
