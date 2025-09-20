@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User Profile - Limecord</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body, html {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            height: 100%;
+        }
+        #profile-container {
+            text-align: center;
+            background-color: #2f3136;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            color: #dcddde;
+        }
+        #profile-container h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        #profile-container p {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="profile-container">
+        <h1>{{ username }}'s Profile</h1>
+        <p>This is a placeholder for the user profile page.</p>
+        <p>More features coming soon, matey!</p>
+        <a href="/chat?username={{username}}" style="color: #7289da;">Back to Chat</a>
+    </div>
+</body>
+</html>

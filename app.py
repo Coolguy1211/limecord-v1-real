@@ -4,6 +4,7 @@ import eventlet
 import sqlite3
 import uuid
 import os
+import mimetypes
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "secret!"
@@ -22,13 +23,30 @@ def init_db():
         cursor.execute("CREATE TABLE IF NOT EXISTS servers (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
         cursor.execute("CREATE TABLE IF NOT EXISTS server_members (id INTEGER PRIMARY KEY, user_id INTEGER, server_id INTEGER, FOREIGN KEY(user_id) REFERENCES users(id), FOREIGN KEY(server_id) REFERENCES servers(id))")
         cursor.execute("CREATE TABLE IF NOT EXISTS channels (id INTEGER PRIMARY KEY, name TEXT, server_id INTEGER, FOREIGN KEY(server_id) REFERENCES servers(id))")
-        cursor.execute("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, user_id INTEGER, channel_id INTEGER, message TEXT, is_image BOOLEAN, FOREIGN KEY(user_id) REFERENCES users(id), FOREIGN KEY(channel_id) REFERENCES channels(id))")
+        cursor.execute("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, user_id INTEGER, channel_id INTEGER, message TEXT, is_image BOOLEAN, filename TEXT, FOREIGN KEY(user_id) REFERENCES users(id), FOREIGN KEY(channel_id) REFERENCES channels(id))")
+        # Add filename column if it doesn't exist for backward compatibility
+        try:
+            cursor.execute("ALTER TABLE messages ADD COLUMN filename TEXT")
+        except:
+            pass # Column already exists
         cursor.execute("CREATE TABLE IF NOT EXISTS friends (id INTEGER PRIMARY KEY, user1_id INTEGER, user2_id INTEGER, status TEXT, FOREIGN KEY(user1_id) REFERENCES users(id), FOREIGN KEY(user2_id) REFERENCES users(id))")
         conn.commit()
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("landing.html")
+
+@app.route("/chat")
+def chat():
+    return render_template("chat.html")
+
+@app.route("/create-server")
+def create_server_page():
+    return render_template("create_server.html")
+
+@app.route("/user/<username>")
+def profile_page(username):
+    return render_template("profile.html", username=username)
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
@@ -72,7 +90,8 @@ def create_server(server_name):
             cursor.execute("INSERT INTO server_members (user_id, server_id) VALUES (?, ?)", (user_id, server_id))
             cursor.execute("INSERT INTO channels (name, server_id) VALUES (?, ?)", ("#general", server_id))
             conn.commit()
-        get_servers()
+        get_servers() # Refresh list for the user
+        emit('server_created', {'server_id': server_id, 'server_name': server_name})
 
 @socketio.on('get_channels')
 def get_channels(server_id):
@@ -81,6 +100,23 @@ def get_channels(server_id):
         cursor.execute("SELECT id, name FROM channels WHERE server_id = ?", (server_id,))
         channels = [{"id": row[0], "name": row[1]} for row in cursor.fetchall()]
         emit('channel_list', channels)
+
+@socketio.on('create_channel')
+def create_channel(data):
+    if request.sid in users:
+        server_id = data['server_id']
+        channel_name = data['name']
+        # Verify user is a member of the server before creating a channel
+        user_id = users[request.sid]['user_id']
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM server_members WHERE user_id = ? AND server_id = ?", (user_id, server_id))
+            if cursor.fetchone():
+                cursor.execute("INSERT INTO channels (name, server_id) VALUES (?, ?)", (channel_name, server_id))
+                conn.commit()
+                # Broadcast to all members of the server
+                # A more optimized approach would be to have a room for each server
+                get_channels(server_id) # For now, just refresh for the creator
 
 @socketio.on('join_channel')
 def join_channel(channel_id):
@@ -91,8 +127,8 @@ def join_channel(channel_id):
         users[request.sid]['current_channel'] = channel_id
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT u.username, m.message, m.is_image FROM messages m JOIN users u ON m.user_id = u.id WHERE m.channel_id = ? ORDER BY m.id ASC", (channel_id,))
-            messages = [{"user": row[0], "message": row[1], "is_image": row[2]} for row in cursor.fetchall()]
+            cursor.execute("SELECT u.username, m.message, m.is_image, m.filename FROM messages m JOIN users u ON m.user_id = u.id WHERE m.channel_id = ? ORDER BY m.id ASC", (channel_id,))
+            messages = [{"user": row[0], "message": row[1], "is_image": row[2], "filename": row[3]} for row in cursor.fetchall()]
             emit('history', messages)
 
 @socketio.on("message")
@@ -106,21 +142,36 @@ def handle_message(msg):
             conn.commit()
         send({"user": user_info['username'], "message": msg, "is_image": False}, to=channel_id)
 
-@socketio.on('image')
-def handle_image(image_data):
+@socketio.on('upload')
+def handle_upload(file_data):
     if request.sid in users and users[request.sid]['current_channel']:
         user_info = users[request.sid]
         channel_id = user_info['current_channel']
-        filename = f"{uuid.uuid4()}.png"
-        filepath = os.path.join(UPLOADS_DIR, filename)
+
+        original_filename = file_data['filename']
+        file_bytes = file_data['data']
+
+        # Generate a unique filename to prevent collisions
+        file_ext = os.path.splitext(original_filename)[1]
+        saved_filename = f"{uuid.uuid4()}{file_ext}"
+        filepath = os.path.join(UPLOADS_DIR, saved_filename)
+
         with open(filepath, 'wb') as f:
-            f.write(image_data)
-        image_url = f"/uploads/{filename}"
+            f.write(file_bytes)
+
+        file_url = f"/uploads/{saved_filename}"
+
+        # Check if the file is an image
+        mimetype, _ = mimetypes.guess_type(filepath)
+        is_image = mimetype and mimetype.startswith('image/')
+
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO messages (user_id, channel_id, message, is_image) VALUES (?, ?, ?, ?)", (user_info['user_id'], channel_id, image_url, True))
+            cursor.execute("INSERT INTO messages (user_id, channel_id, message, is_image, filename) VALUES (?, ?, ?, ?, ?)",
+                           (user_info['user_id'], channel_id, file_url, is_image, original_filename))
             conn.commit()
-        send({"user": user_info['username'], "message": image_url, "is_image": True}, to=channel_id)
+
+        send({"user": user_info['username'], "message": file_url, "is_image": is_image, "filename": original_filename}, to=channel_id)
 
 @socketio.on('disconnect')
 def on_disconnect():

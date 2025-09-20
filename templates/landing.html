@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Welcome to Limecord</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body, html {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            height: 100%;
+        }
+        #welcome-container {
+            text-align: center;
+            background-color: #2f3136;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        #welcome-container h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        #welcome-container p {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+        }
+        #username-form input {
+            padding: 15px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 5px;
+            background-color: #40444b;
+            color: #dcddde;
+            width: 300px;
+            margin-right: 10px;
+        }
+        #username-form button {
+            padding: 15px 20px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 5px;
+            background-color: #7289da;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #username-form button:hover {
+            background-color: #677bc4;
+        }
+    </style>
+</head>
+<body>
+    <div id="welcome-container">
+        <h1>Welcome to Limecord</h1>
+        <p>A new place to chat with your mates. Create a server or join one!</p>
+        <form id="username-form" action="/chat" method="get">
+            <input type="text" name="username" placeholder="Enter your username" required>
+            <button type="submit">Join the Crew</button>
+        </form>
+    </div>
+</body>
+</html>
