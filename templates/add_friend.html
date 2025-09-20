@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add Friend</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        #add-friend-container {
+            padding: 20px;
+        }
+        #add-friend-form {
+            display: flex;
+            flex-direction: column;
+            width: 300px;
+        }
+        #add-friend-form input {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="add-friend-container">
+        <h1>Add a Friend</h1>
+        <form id="add-friend-form" method="post">
+            <label for="username">Friend's Username</label>
+            <input type="text" id="username" name="username" required>
+            <button type="submit">Send Friend Request</button>
+        </form>
+        <a href="{{ url_for('chat') }}">Back to Chat</a>
+    </div>
+</body>
+</html>

@@ -23,27 +23,15 @@
         </div>
         <ul id="channels"></ul>
       </div>
-      <div id="friends-list">
-        <div class="list-header">
-            <h4>Friends</h4>
-        </div>
-        <ul id="friends"></ul>
-        <form id="add-friend-form">
-          <input id="friendName" autocomplete="off" placeholder="Add Friend" />
-          <button>Add</button>
-        </form>
-        <div class="list-header">
-            <h4>Friend Requests</h4>
-        </div>
-        <ul id="friend-requests"></ul>
-      </div>
-      <div id="user-profile-bar">
-          <a id="profile-link" href="#">My Profile</a>
-      </div>
     </div>
     <div id="chat-container">
         <div id="chat-header">
             <h3 id="channel-name-display"></h3>
+        </div>
+        <div id="video-grid"></div>
+        <div id="voice-controls">
+            <button id="share-screen-btn">Share Screen</button>
+            <button id="leave-voice-btn">Leave Voice</button>
         </div>
         <ul id="messages"></ul>
         <div id="message-input-container">
@@ -55,49 +43,70 @@
             </form>
         </div>
     </div>
+    <div id="right-sidebar">
+        <div id="user-profile-bar">
+            <a id="profile-link" href="#">My Profile</a>
+            <a id="logout-link" href="/logout">Logout</a>
+            <button id="update-btn">Check for Updates</button>
+        </div>
+        <div id="friends-list">
+            <div class="list-header">
+                <h4>Friends</h4>
+            </div>
+            <ul id="friends"></ul>
+            <a href="{{ url_for('add_friend_page') }}">Add Friend</a>
+            <div class="list-header">
+                <h4>Friend Requests</h4>
+            </div>
+            <ul id="friend-requests"></ul>
+        </div>
+    </div>
   </div>
 
+  <style>
+    #video-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, 300px);
+        gap: 10px;
+    }
+    video {
+        width: 100%;
+        height: auto;
+        background: black;
+    }
+  </style>
   <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
   <script>
     const socket = io();
     let currentServerId = null;
     let currentChannelId = null;
+    let localStream = null;
+    const peerConnections = {};
+    const config = {
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    };
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const username = urlParams.get('username');
-    if (username) {
-        socket.emit('setUsername', username);
-    } else {
-        // Redirect to landing if no username is provided
-        window.location.href = "/";
-    }
+    socket.on('connect', () => {
+        console.log('Connected to server');
+    });
 
     // Link to create server page
     document.getElementById('create-server-link').onclick = (e) => {
         e.preventDefault();
-        const urlParams = new URLSearchParams(window.location.search);
-        const username = urlParams.get('username');
-        if (username) {
-            window.location.href = `/create-server?username=${username}`;
-        } else {
-            window.location.href = "/"; // something went wrong, send to home
-        }
+        window.location.href = "/create-server";
     };
 
-    document.getElementById('add-friend-form').onsubmit = (e) => {
-        e.preventDefault();
-        const friendNameInput = document.getElementById('friendName');
-        if (friendNameInput.value) {
-            socket.emit('add_friend', friendNameInput.value);
-            friendNameInput.value = '';
-        }
-    };
 
     document.getElementById('add-channel-btn').onclick = () => {
         if (currentServerId) {
             const channelName = prompt("Enter new channel name:");
             if (channelName) {
-                socket.emit('create_channel', { server_id: currentServerId, name: channelName });
+                const channelType = prompt("Enter channel type (text or voice):", "text");
+                if (channelType === 'text' || channelType === 'voice') {
+                    socket.emit('create_channel', { server_id: currentServerId, name: channelName, type: channelType });
+                } else {
+                    alert("Invalid channel type. Please enter 'text' or 'voice'.");
+                }
             }
         } else {
             alert("Please select a server first.");
@@ -106,11 +115,8 @@
 
     document.getElementById('profile-link').onclick = (e) => {
         e.preventDefault();
-        const urlParams = new URLSearchParams(window.location.search);
-        const username = urlParams.get('username');
-        if (username) {
-            window.location.href = `/user/${username}`;
-        }
+        // The server knows the username from the session
+        window.location.href = `/user/{{ session.username }}`;
     };
 
     document.getElementById('message-form').onsubmit = (e) => {
@@ -136,15 +142,36 @@
         }
     };
 
+    let currentDmFriend = null;
+
     function sendMessage() {
         const messageInput = document.getElementById('myMessage');
         if (messageInput.value) {
-            socket.send(messageInput.value);
+            if (currentDmFriend) {
+                socket.emit('send_dm', { message: messageInput.value });
+            } else {
+                socket.send(messageInput.value);
+            }
             messageInput.value = '';
         }
     }
 
     // Socket listeners
+    socket.on('dm_history', (data) => {
+        currentDmFriend = data.friend;
+        currentChannelId = null;
+        document.getElementById('channel-name-display').innerText = `DM with ${data.friend}`;
+        const messagesUl = document.getElementById('messages');
+        messagesUl.innerHTML = '';
+        data.messages.forEach(addMessage);
+    });
+
+    socket.on('new_dm', (data) => {
+        // Only add if it's part of the current conversation
+        if (currentDmFriend && (data.user === currentDmFriend || data.user === '{{ session.username }}')) {
+            addMessage(data);
+        }
+    });
     socket.on('server_list', (servers) => {
         const serversDiv = document.getElementById('servers');
         serversDiv.innerHTML = '';
@@ -168,14 +195,28 @@
         channelsUl.innerHTML = '';
         channels.forEach(channel => {
             const li = document.createElement('li');
-            li.innerText = channel.name;
             li.dataset.channelId = channel.id;
             li.dataset.channelName = channel.name;
-            li.onclick = () => {
-                currentChannelId = channel.id;
-                document.getElementById('channel-name-display').innerText = channel.name;
-                socket.emit('join_channel', channel.id);
-            };
+
+            if (channel.type === 'voice') {
+                li.innerText = `🔊 ${channel.name}`;
+                const joinBtn = document.createElement('button');
+                joinBtn.innerText = 'Join';
+                joinBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    console.log('Joining voice channel', channel.id);
+                    socket.emit('join_voice_channel', { channel_id: channel.id });
+                };
+                li.appendChild(joinBtn);
+            } else {
+                li.innerText = `# ${channel.name}`;
+                li.onclick = () => {
+                    currentChannelId = channel.id;
+                    currentDmFriend = null;
+                    document.getElementById('channel-name-display').innerText = channel.name;
+                    socket.emit('join_channel', channel.id);
+                };
+            }
             channelsUl.appendChild(li);
         });
     });
@@ -229,6 +270,9 @@
         friends.forEach(friend => {
             const li = document.createElement('li');
             li.innerText = friend;
+            li.onclick = () => {
+                socket.emit('open_dm', friend);
+            };
             friendsUl.appendChild(li);
         });
     });
@@ -256,6 +300,163 @@
     socket.on('error', (data) => {
         alert(data.message);
     });
+
+    // WebRTC Listeners
+    socket.on('user_joined_voice', (data) => {
+        console.log('user joined voice', data);
+        createPeerConnection(data.sid, true);
+    });
+
+    socket.on('user_left_voice', (data) => {
+        console.log('user left voice', data);
+        if (peerConnections[data.sid]) {
+            peerConnections[data.sid].close();
+            delete peerConnections[data.sid];
+            const videoElement = document.getElementById(data.sid);
+            if (videoElement) {
+                videoElement.remove();
+            }
+        }
+    });
+
+    socket.on('offer', async (data) => {
+        if (!peerConnections[data.sid]) {
+            createPeerConnection(data.sid, false);
+        }
+        await peerConnections[data.sid].setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await peerConnections[data.sid].createAnswer();
+        await peerConnections[data.sid].setLocalDescription(answer);
+        socket.emit('answer', { target_sid: data.sid, answer: answer });
+    });
+
+    socket.on('answer', async (data) => {
+        await peerConnections[data.sid].setRemoteDescription(new RTCSessionDescription(data.answer));
+    });
+
+    socket.on('ice_candidate', (data) => {
+        peerConnections[data.sid].addIceCandidate(new RTCIceCandidate(data.candidate));
+    });
+
+    async function startMedia() {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+            addVideoStream('local-video', localStream);
+        } catch (e) {
+            console.error('Error getting user media', e);
+        }
+    }
+
+    function createPeerConnection(sid, is_offerer) {
+        peerConnections[sid] = new RTCPeerConnection(config);
+        peerConnections[sid].onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.emit('ice_candidate', { target_sid: sid, candidate: event.candidate });
+            }
+        };
+        peerConnections[sid].ontrack = (event) => {
+            addVideoStream(sid, event.streams[0]);
+        };
+        if (localStream) {
+            localStream.getTracks().forEach(track => {
+                peerConnections[sid].addTrack(track, localStream);
+            });
+        }
+        if (is_offerer) {
+            peerConnections[sid].createOffer()
+                .then(offer => peerConnections[sid].setLocalDescription(offer))
+                .then(() => {
+                    socket.emit('offer', { target_sid: sid, offer: peerConnections[sid].localDescription });
+                });
+        }
+    }
+
+    function addVideoStream(id, stream) {
+        const videoGrid = document.getElementById('video-grid');
+        const video = document.createElement('video');
+        video.id = id;
+        video.srcObject = stream;
+        video.autoplay = true;
+        video.muted = id === 'local-video'; // Mute self
+        videoGrid.appendChild(video);
+    }
+
+    // Modify the join voice channel to start media
+    const originalJoinVoice = (channel) => {
+        console.log('Joining voice channel', channel.id);
+        startMedia().then(() => {
+            socket.emit('join_voice_channel', { channel_id: channel.id });
+        });
+    };
+
+    // a bit of a hack to replace the onclick
+    socket.on('channel_list', (channels) => {
+        const channelsUl = document.getElementById('channels');
+        channels.forEach(channel => {
+            if (channel.type === 'voice') {
+                const li = channelsUl.querySelector(`[data-channel-id='${channel.id}']`);
+                if(li){
+                    const joinBtn = li.querySelector('button');
+                    joinBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        originalJoinVoice(channel);
+                    };
+                }
+            }
+        });
+    });
+
+    document.getElementById('share-screen-btn').onclick = async () => {
+        if (!localStream) {
+            alert("You must be in a voice channel to share your screen.");
+            return;
+        }
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const screenTrack = screenStream.getVideoTracks()[0];
+        const videoTrack = localStream.getVideoTracks()[0];
+        for (const sid in peerConnections) {
+            const sender = peerConnections[sid].getSenders().find(s => s.track.kind === 'video');
+            sender.replaceTrack(screenTrack);
+        }
+        localStream.removeTrack(videoTrack);
+        localStream.addTrack(screenTrack);
+        const localVideo = document.getElementById('local-video');
+        localVideo.srcObject = localStream;
+
+        screenTrack.onended = () => {
+            // Stop sharing and revert to webcam
+            for (const sid in peerConnections) {
+                const sender = peerConnections[sid].getSenders().find(s => s.track.kind === 'video');
+                sender.replaceTrack(videoTrack);
+            }
+            localStream.removeTrack(screenTrack);
+            localStream.addTrack(videoTrack);
+            localVideo.srcObject = localStream;
+        };
+    };
+
+    document.getElementById('leave-voice-btn').onclick = () => {
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+        }
+        for (const sid in peerConnections) {
+            peerConnections[sid].close();
+            delete peerConnections[sid];
+        }
+        const videoGrid = document.getElementById('video-grid');
+        videoGrid.innerHTML = '';
+        if (currentChannelId) {
+            socket.emit('leave_voice_channel', { channel_id: currentChannelId });
+        }
+    };
+
+    document.getElementById('update-btn').onclick = () => {
+        fetch('/update')
+            .then(response => response.text())
+            .then(data => {
+                alert(data);
+            });
+    };
 
   </script>
 </body>
