@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create a New Server - Limecord</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body, html {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            height: 100%;
+        }
+        #create-server-container {
+            text-align: center;
+            background-color: #2f3136;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        #create-server-container h1 {
+            font-size: 2rem;
+            margin-bottom: 20px;
+        }
+        #create-server-form input {
+            padding: 15px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 5px;
+            background-color: #40444b;
+            color: #dcddde;
+            width: 300px;
+            margin-bottom: 20px;
+        }
+        #create-server-form button {
+            padding: 15px 20px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 5px;
+            background-color: #7289da;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 100%;
+        }
+        #create-server-form button:hover {
+            background-color: #677bc4;
+        }
+    </style>
+</head>
+<body>
+    <div id="create-server-container">
+        <h1>Give your new server a name</h1>
+        <form id="create-server-form">
+            <input type="text" id="serverName" placeholder="My Awesome Server" required>
+            <button type="submit">Create Server</button>
+        </form>
+    </div>
+
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+
+        // Re-join with username when visiting this page
+        const urlParams = new URLSearchParams(window.location.search);
+        const username = urlParams.get('username');
+        if (username) {
+            socket.on('connect', () => {
+                socket.emit('setUsername', username);
+            });
+        } else {
+            // If no username, we can't create a server, so send them back to start
+            window.location.href = "/";
+        }
+
+        document.getElementById('create-server-form').onsubmit = (e) => {
+            e.preventDefault();
+            const serverNameInput = document.getElementById('serverName');
+            if (serverNameInput.value) {
+                socket.emit('create_server', serverNameInput.value);
+            }
+        };
+
+        socket.on('server_created', (data) => {
+            if (username) {
+                // Redirect to the chat page, which will load the new server list
+                window.location.href = `/chat?username=${username}`;
+            } else {
+                window.location.href = '/';
+            }
+        });
+    </script>
+</body>
+</html>

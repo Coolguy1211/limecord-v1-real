@@ -8,28 +8,37 @@
   <div id="app-container">
     <div id="server-list">
       <div id="servers"></div>
-      <div id="create-server-form">
-        <input id="serverName" autocomplete="off" placeholder="New Server" />
-        <button id="createServerBtn">+</button>
-      </div>
+      <a id="create-server-link" href="#">
+        <div class="server-icon" id="add-server-btn">+</div>
+      </a>
     </div>
     <div id="sidebar">
       <div id="sidebar-header">
         <h3 id="server-name-display"></h3>
       </div>
       <div id="channel-list">
-        <h4>Channels</h4>
+        <div class="list-header">
+          <h4>Channels</h4>
+          <button id="add-channel-btn">+</button>
+        </div>
         <ul id="channels"></ul>
       </div>
       <div id="friends-list">
-        <h4>Friends</h4>
+        <div class="list-header">
+            <h4>Friends</h4>
+        </div>
         <ul id="friends"></ul>
         <form id="add-friend-form">
           <input id="friendName" autocomplete="off" placeholder="Add Friend" />
           <button>Add</button>
         </form>
-        <h4>Friend Requests</h4>
+        <div class="list-header">
+            <h4>Friend Requests</h4>
+        </div>
         <ul id="friend-requests"></ul>
+      </div>
+      <div id="user-profile-bar">
+          <a id="profile-link" href="#">My Profile</a>
       </div>
     </div>
     <div id="chat-container">
@@ -40,7 +49,7 @@
         <div id="message-input-container">
             <form id="message-form" action="">
                 <button type="button" id="upload-btn">+</button>
-                <input type="file" id="imageFile" accept="image/*" style="display: none;"/>
+                <input type="file" id="fileUpload" style="display: none;"/>
                 <input id="myMessage" autocomplete="off" placeholder="Type a message..."/>
                 <button id="send-btn">Send</button>
             </form>
@@ -54,15 +63,24 @@
     let currentServerId = null;
     let currentChannelId = null;
 
-    const username = prompt("Please enter your username:");
-    socket.emit('setUsername', username);
+    const urlParams = new URLSearchParams(window.location.search);
+    const username = urlParams.get('username');
+    if (username) {
+        socket.emit('setUsername', username);
+    } else {
+        // Redirect to landing if no username is provided
+        window.location.href = "/";
+    }
 
-    // Forms
-    document.getElementById('createServerBtn').onclick = () => {
-        const serverNameInput = document.getElementById('serverName');
-        if (serverNameInput.value) {
-            socket.emit('create_server', serverNameInput.value);
-            serverNameInput.value = '';
+    // Link to create server page
+    document.getElementById('create-server-link').onclick = (e) => {
+        e.preventDefault();
+        const urlParams = new URLSearchParams(window.location.search);
+        const username = urlParams.get('username');
+        if (username) {
+            window.location.href = `/create-server?username=${username}`;
+        } else {
+            window.location.href = "/"; // something went wrong, send to home
         }
     };
 
@@ -75,21 +93,44 @@
         }
     };
 
+    document.getElementById('add-channel-btn').onclick = () => {
+        if (currentServerId) {
+            const channelName = prompt("Enter new channel name:");
+            if (channelName) {
+                socket.emit('create_channel', { server_id: currentServerId, name: channelName });
+            }
+        } else {
+            alert("Please select a server first.");
+        }
+    };
+
+    document.getElementById('profile-link').onclick = (e) => {
+        e.preventDefault();
+        const urlParams = new URLSearchParams(window.location.search);
+        const username = urlParams.get('username');
+        if (username) {
+            window.location.href = `/user/${username}`;
+        }
+    };
+
     document.getElementById('message-form').onsubmit = (e) => {
         e.preventDefault();
         sendMessage();
     };
 
     document.getElementById('upload-btn').onclick = () => {
-        document.getElementById('imageFile').click();
+        document.getElementById('fileUpload').click();
     };
 
-    document.getElementById('imageFile').onchange = (e) => {
+    document.getElementById('fileUpload').onchange = (e) => {
         const file = e.target.files[0];
         if (file) {
             const reader = new FileReader();
             reader.onload = (event) => {
-                socket.emit('image', event.target.result);
+                socket.emit('upload', {
+                    filename: file.name,
+                    data: event.target.result
+                });
             };
             reader.readAsArrayBuffer(file);
         }
@@ -164,7 +205,15 @@
             const img = document.createElement('img');
             img.src = data.message;
             li.appendChild(img);
-        } else {
+        } else if (data.filename) { // It's a file, not a regular message
+            const fileLink = document.createElement('a');
+            fileLink.href = data.message;
+            fileLink.innerText = data.filename;
+            fileLink.target = "_blank"; // Open in new tab
+            fileLink.className = 'file-link';
+            li.appendChild(fileLink);
+        }
+        else {
             const messageSpan = document.createElement('span');
             messageSpan.className = 'message-text';
             messageSpan.innerText = data.message;
