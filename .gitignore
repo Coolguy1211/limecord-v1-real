@@ -1,0 +1,5 @@
+app.log
+database.db
+uploads/
+__pycache__/
+*.pyc

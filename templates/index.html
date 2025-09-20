@@ -5,18 +5,31 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <div id="chat-container">
-    <ul id="messages"></ul>
-    <form id="message-form" action="">
-      <input id="myMessage" autocomplete="off" /><button>Send</button>
-      <input type="file" id="imageFile" accept="image/*" />
-      <button type="button" id="sendImage">Send Image</button>
-    </form>
-    <div id="emoji-picker">
-      <button type="button" class="emoji">😊</button>
-      <button type="button" class="emoji">😂</button>
-      <button type="button" class="emoji">❤️</button>
-      <button type="button" class="emoji">👍</button>
+  <div id="app-container">
+    <div id="server-list">
+      <h3>Servers</h3>
+      <ul id="servers"></ul>
+      <form id="create-server-form">
+        <input id="serverName" autocomplete="off" placeholder="New Server Name" /><button>Create</button>
+      </form>
+    </div>
+    <div id="channel-list">
+      <h3>Channels</h3>
+      <ul id="channels"></ul>
+    </div>
+    <div id="chat-container">
+      <ul id="messages"></ul>
+      <form id="message-form" action="">
+        <input id="myMessage" autocomplete="off" /><button>Send</button>
+        <input type="file" id="imageFile" accept="image/*" />
+        <button type="button" id="sendImage">Send Image</button>
+      </form>
+      <div id="emoji-picker">
+        <button type="button" class="emoji">😊</button>
+        <button type="button" class="emoji">😂</button>
+        <button type="button" class="emoji">❤️</button>
+        <button type="button" class="emoji">👍</button>
+      </div>
     </div>
   </div>
 
@@ -26,6 +39,43 @@
 
     var username = prompt("Please enter your username:");
     socket.emit('setUsername', username);
+
+    document.getElementById('create-server-form').onsubmit = function(e) {
+      e.preventDefault();
+      var input = document.getElementById('serverName');
+      if (input.value) {
+        socket.emit('create_server', input.value);
+        input.value = '';
+      }
+    };
+
+    socket.on('server_list', function(servers) {
+      var serversUl = document.getElementById('servers');
+      serversUl.innerHTML = '';
+      servers.forEach(function(server) {
+        var li = document.createElement("li");
+        li.innerText = server.name;
+        li.dataset.serverId = server.id;
+        li.onclick = function() {
+          socket.emit('get_channels', this.dataset.serverId);
+        };
+        serversUl.appendChild(li);
+      });
+    });
+
+    socket.on('channel_list', function(channels) {
+      var channelsUl = document.getElementById('channels');
+      channelsUl.innerHTML = '';
+      channels.forEach(function(channel) {
+        var li = document.createElement("li");
+        li.innerText = channel.name;
+        li.dataset.channelId = channel.id;
+        li.onclick = function() {
+          socket.emit('join_channel', this.dataset.channelId);
+        };
+        channelsUl.appendChild(li);
+      });
+    });
 
     document.getElementById('message-form').onsubmit = function(e) {
       e.preventDefault();
@@ -68,6 +118,8 @@
     }
 
     socket.on('history', function(messages) {
+      var messagesUl = document.getElementById('messages');
+      messagesUl.innerHTML = ''; // Clear old messages
       messages.forEach(function(data) {
         addMessage(data);
       });
