@@ -7,179 +7,207 @@
 <body>
   <div id="app-container">
     <div id="server-list">
-      <h3>Servers</h3>
-      <ul id="servers"></ul>
-      <form id="create-server-form">
-        <input id="serverName" autocomplete="off" placeholder="New Server Name" /><button>Create</button>
-      </form>
+      <div id="servers"></div>
+      <div id="create-server-form">
+        <input id="serverName" autocomplete="off" placeholder="New Server" />
+        <button id="createServerBtn">+</button>
+      </div>
     </div>
-    <div id="channel-list">
-      <h3>Channels</h3>
-      <ul id="channels"></ul>
-    </div>
-    <div id="friends-list">
-      <h3>Friends</h3>
-      <ul id="friends"></ul>
-      <form id="add-friend-form">
-        <input id="friendName" autocomplete="off" placeholder="Add Friend" /><button>Add</button>
-      </form>
-      <h4>Friend Requests</h4>
-      <ul id="friend-requests"></ul>
+    <div id="sidebar">
+      <div id="sidebar-header">
+        <h3 id="server-name-display"></h3>
+      </div>
+      <div id="channel-list">
+        <h4>Channels</h4>
+        <ul id="channels"></ul>
+      </div>
+      <div id="friends-list">
+        <h4>Friends</h4>
+        <ul id="friends"></ul>
+        <form id="add-friend-form">
+          <input id="friendName" autocomplete="off" placeholder="Add Friend" />
+          <button>Add</button>
+        </form>
+        <h4>Friend Requests</h4>
+        <ul id="friend-requests"></ul>
+      </div>
     </div>
     <div id="chat-container">
-      <ul id="messages"></ul>
-      <form id="message-form" action="">
-        <input id="myMessage" autocomplete="off" /><button>Send</button>
-        <input type="file" id="imageFile" accept="image/*" />
-        <button type="button" id="sendImage">Send Image</button>
-      </form>
-      <div id="emoji-picker">
-        <button type="button" class="emoji">😊</button>
-        <button type="button" class="emoji">😂</button>
-        <button type="button" class="emoji">❤️</button>
-        <button type="button" class="emoji">👍</button>
-      </div>
+        <div id="chat-header">
+            <h3 id="channel-name-display"></h3>
+        </div>
+        <ul id="messages"></ul>
+        <div id="message-input-container">
+            <form id="message-form" action="">
+                <button type="button" id="upload-btn">+</button>
+                <input type="file" id="imageFile" accept="image/*" style="display: none;"/>
+                <input id="myMessage" autocomplete="off" placeholder="Type a message..."/>
+                <button id="send-btn">Send</button>
+            </form>
+        </div>
     </div>
   </div>
 
   <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
   <script>
-    var socket = io();
+    const socket = io();
+    let currentServerId = null;
+    let currentChannelId = null;
 
-    var username = prompt("Please enter your username:");
+    const username = prompt("Please enter your username:");
     socket.emit('setUsername', username);
 
-    document.getElementById('create-server-form').onsubmit = function(e) {
-      e.preventDefault();
-      var input = document.getElementById('serverName');
-      if (input.value) {
-        socket.emit('create_server', input.value);
-        input.value = '';
-      }
+    // Forms
+    document.getElementById('createServerBtn').onclick = () => {
+        const serverNameInput = document.getElementById('serverName');
+        if (serverNameInput.value) {
+            socket.emit('create_server', serverNameInput.value);
+            serverNameInput.value = '';
+        }
     };
 
-    socket.on('server_list', function(servers) {
-      var serversUl = document.getElementById('servers');
-      serversUl.innerHTML = '';
-      servers.forEach(function(server) {
-        var li = document.createElement("li");
-        li.innerText = server.name;
-        li.dataset.serverId = server.id;
-        li.onclick = function() {
-          socket.emit('get_channels', this.dataset.serverId);
-        };
-        serversUl.appendChild(li);
-      });
+    document.getElementById('add-friend-form').onsubmit = (e) => {
+        e.preventDefault();
+        const friendNameInput = document.getElementById('friendName');
+        if (friendNameInput.value) {
+            socket.emit('add_friend', friendNameInput.value);
+            friendNameInput.value = '';
+        }
+    };
+
+    document.getElementById('message-form').onsubmit = (e) => {
+        e.preventDefault();
+        sendMessage();
+    };
+
+    document.getElementById('upload-btn').onclick = () => {
+        document.getElementById('imageFile').click();
+    };
+
+    document.getElementById('imageFile').onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                socket.emit('image', event.target.result);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+    };
+
+    function sendMessage() {
+        const messageInput = document.getElementById('myMessage');
+        if (messageInput.value) {
+            socket.send(messageInput.value);
+            messageInput.value = '';
+        }
+    }
+
+    // Socket listeners
+    socket.on('server_list', (servers) => {
+        const serversDiv = document.getElementById('servers');
+        serversDiv.innerHTML = '';
+        servers.forEach(server => {
+            const serverDiv = document.createElement('div');
+            serverDiv.className = 'server-icon';
+            serverDiv.innerText = server.name.substring(0, 1).toUpperCase();
+            serverDiv.dataset.serverId = server.id;
+            serverDiv.dataset.serverName = server.name;
+            serverDiv.onclick = () => {
+                currentServerId = server.id;
+                document.getElementById('server-name-display').innerText = server.name;
+                socket.emit('get_channels', server.id);
+            };
+            serversDiv.appendChild(serverDiv);
+        });
     });
 
-    socket.on('channel_list', function(channels) {
-      var channelsUl = document.getElementById('channels');
-      channelsUl.innerHTML = '';
-      channels.forEach(function(channel) {
-        var li = document.createElement("li");
-        li.innerText = channel.name;
-        li.dataset.channelId = channel.id;
-        li.onclick = function() {
-          socket.emit('join_channel', this.dataset.channelId);
-        };
-        channelsUl.appendChild(li);
-      });
+    socket.on('channel_list', (channels) => {
+        const channelsUl = document.getElementById('channels');
+        channelsUl.innerHTML = '';
+        channels.forEach(channel => {
+            const li = document.createElement('li');
+            li.innerText = channel.name;
+            li.dataset.channelId = channel.id;
+            li.dataset.channelName = channel.name;
+            li.onclick = () => {
+                currentChannelId = channel.id;
+                document.getElementById('channel-name-display').innerText = channel.name;
+                socket.emit('join_channel', channel.id);
+            };
+            channelsUl.appendChild(li);
+        });
     });
 
-    document.getElementById('message-form').onsubmit = function(e) {
-      e.preventDefault();
-      var input = document.getElementById('myMessage');
-      if (input.value) {
-        socket.send(input.value);
-        input.value = '';
-      }
-    };
+    socket.on('history', (messages) => {
+        const messagesUl = document.getElementById('messages');
+        messagesUl.innerHTML = '';
+        messages.forEach(addMessage);
+    });
 
-    document.getElementById('sendImage').onclick = function() {
-      var fileInput = document.getElementById('imageFile');
-      var file = fileInput.files[0];
-      if (file) {
-        var reader = new FileReader();
-        reader.onload = function(e) {
-          socket.emit('image', e.target.result);
-        };
-        reader.readAsArrayBuffer(file);
-        fileInput.value = '';
-      }
-    };
-
-    document.querySelectorAll('.emoji').forEach(function(button) {
-      button.onclick = function() {
-        var input = document.getElementById('myMessage');
-        input.value += this.innerText;
-        input.focus();
-      };
+    socket.on('message', (data) => {
+        addMessage(data);
     });
 
     function addMessage(data) {
-      var li = document.createElement("li");
-      if (data.is_image) {
-        li.innerHTML = data.user + ': <img src="' + data.message + '" style="max-width: 300px;">';
-      } else {
-        li.innerText = data.user + ": " + data.message;
-      }
-      document.getElementById("messages").appendChild(li);
+        const messagesUl = document.getElementById('messages');
+        const li = document.createElement('li');
+        li.className = 'message';
+
+        const userSpan = document.createElement('span');
+        userSpan.className = 'username';
+        userSpan.innerText = data.user;
+
+        li.appendChild(userSpan);
+
+        if (data.is_image) {
+            const img = document.createElement('img');
+            img.src = data.message;
+            li.appendChild(img);
+        } else {
+            const messageSpan = document.createElement('span');
+            messageSpan.className = 'message-text';
+            messageSpan.innerText = data.message;
+            li.appendChild(messageSpan);
+        }
+        messagesUl.appendChild(li);
+        messagesUl.scrollTop = messagesUl.scrollHeight;
     }
 
-    socket.on('history', function(messages) {
-      var messagesUl = document.getElementById('messages');
-      messagesUl.innerHTML = ''; // Clear old messages
-      messages.forEach(function(data) {
-        addMessage(data);
-      });
+    socket.on('friend_list', (friends) => {
+        const friendsUl = document.getElementById('friends');
+        friendsUl.innerHTML = '';
+        friends.forEach(friend => {
+            const li = document.createElement('li');
+            li.innerText = friend;
+            friendsUl.appendChild(li);
+        });
     });
 
-    socket.on("message", function(data) {
-      addMessage(data);
+    socket.on('friend_requests', (requests) => {
+        const requestsUl = document.getElementById('friend-requests');
+        requestsUl.innerHTML = '';
+        requests.forEach(request => {
+            const li = document.createElement('li');
+            li.innerText = request.username;
+            const acceptBtn = document.createElement('button');
+            acceptBtn.innerText = 'Accept';
+            acceptBtn.onclick = () => {
+                socket.emit('accept_friend_request', request.id);
+            };
+            li.appendChild(acceptBtn);
+            requestsUl.appendChild(li);
+        });
     });
 
-    document.getElementById('add-friend-form').onsubmit = function(e) {
-      e.preventDefault();
-      var input = document.getElementById('friendName');
-      if (input.value) {
-        socket.emit('add_friend', input.value);
-        input.value = '';
-      }
-    };
-
-    socket.on('friend_list', function(friends) {
-      var friendsUl = document.getElementById('friends');
-      friendsUl.innerHTML = '';
-      friends.forEach(function(friend) {
-        var li = document.createElement("li");
-        li.innerText = friend;
-        friendsUl.appendChild(li);
-      });
-    });
-
-    socket.on('friend_requests', function(requests) {
-      var requestsUl = document.getElementById('friend-requests');
-      requestsUl.innerHTML = '';
-      requests.forEach(function(request) {
-        var li = document.createElement("li");
-        li.innerText = request.username;
-        var acceptButton = document.createElement('button');
-        acceptButton.innerText = 'Accept';
-        acceptButton.onclick = function() {
-          socket.emit('accept_friend_request', request.id);
-        };
-        li.appendChild(acceptButton);
-        requestsUl.appendChild(li);
-      });
-    });
-
-    socket.on('friend_request_sent', function(data) {
+    socket.on('friend_request_sent', (data) => {
         alert(data.message);
     });
 
-    socket.on('error', function(data) {
+    socket.on('error', (data) => {
         alert(data.message);
     });
+
   </script>
 </body>
 </html>
