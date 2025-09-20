@@ -2,24 +2,80 @@
 <html>
 <head>
   <title>PyCord</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <ul id="messages"></ul>
-  <input id="myMessage" autocomplete="off"/><button onclick="sendMessage()">Send</button>
+  <div id="chat-container">
+    <ul id="messages"></ul>
+    <form id="message-form" action="">
+      <input id="myMessage" autocomplete="off" /><button>Send</button>
+      <input type="file" id="imageFile" accept="image/*" />
+      <button type="button" id="sendImage">Send Image</button>
+    </form>
+    <div id="emoji-picker">
+      <button type="button" class="emoji">😊</button>
+      <button type="button" class="emoji">😂</button>
+      <button type="button" class="emoji">❤️</button>
+      <button type="button" class="emoji">👍</button>
+    </div>
+  </div>
 
   <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
   <script>
     var socket = io();
-    socket.on("message", function(msg) {
-      var li = document.createElement("li");
-      li.innerText = msg;
-      document.getElementById("messages").appendChild(li);
+
+    var username = prompt("Please enter your username:");
+    socket.emit('setUsername', username);
+
+    document.getElementById('message-form').onsubmit = function(e) {
+      e.preventDefault();
+      var input = document.getElementById('myMessage');
+      if (input.value) {
+        socket.send(input.value);
+        input.value = '';
+      }
+    };
+
+    document.getElementById('sendImage').onclick = function() {
+      var fileInput = document.getElementById('imageFile');
+      var file = fileInput.files[0];
+      if (file) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          socket.emit('image', e.target.result);
+        };
+        reader.readAsArrayBuffer(file);
+        fileInput.value = '';
+      }
+    };
+
+    document.querySelectorAll('.emoji').forEach(function(button) {
+      button.onclick = function() {
+        var input = document.getElementById('myMessage');
+        input.value += this.innerText;
+        input.focus();
+      };
     });
-    function sendMessage(){
-      var input = document.getElementById("myMessage");
-      socket.send(input.value);
-      input.value = "";
+
+    function addMessage(data) {
+      var li = document.createElement("li");
+      if (data.is_image) {
+        li.innerHTML = data.user + ': <img src="' + data.message + '" style="max-width: 300px;">';
+      } else {
+        li.innerText = data.user + ": " + data.message;
+      }
+      document.getElementById("messages").appendChild(li);
     }
+
+    socket.on('history', function(messages) {
+      messages.forEach(function(data) {
+        addMessage(data);
+      });
+    });
+
+    socket.on("message", function(data) {
+      addMessage(data);
+    });
   </script>
 </body>
 </html>
