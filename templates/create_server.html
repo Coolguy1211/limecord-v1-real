@@ -61,18 +61,10 @@
     <script>
         const socket = io();
 
-        // Re-join with username when visiting this page
-        const urlParams = new URLSearchParams(window.location.search);
-        const username = urlParams.get('username');
-        if (username) {
-            socket.on('connect', () => {
-                socket.emit('setUsername', username);
-            });
-        } else {
-            // If no username, we can't create a server, so send them back to start
-            window.location.href = "/";
-        }
-
+        // This page relies on the server-side session to identify the logged-in user.
+        // The previous implementation tried to pass the username as a URL parameter,
+        // which was unreliable and has been removed. The backend `create_server`
+        // event handler correctly uses the user's session.
         document.getElementById('create-server-form').onsubmit = (e) => {
             e.preventDefault();
             const serverNameInput = document.getElementById('serverName');
@@ -82,12 +74,8 @@
         };
 
         socket.on('server_created', (data) => {
-            if (username) {
-                // Redirect to the chat page, which will load the new server list
-                window.location.href = `/chat?username=${username}`;
-            } else {
-                window.location.href = '/';
-            }
+            // Redirect to the chat page, which will load the new server list
+            window.location.href = `/chat`;
         });
     </script>
 </body>

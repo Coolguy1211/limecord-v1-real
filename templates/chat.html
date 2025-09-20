@@ -47,7 +47,6 @@
         <div id="user-profile-bar">
             <a id="profile-link" href="#">My Profile</a>
             <a id="logout-link" href="/logout">Logout</a>
-            <button id="update-btn">Check for Updates</button>
         </div>
         <div id="friends-list">
             <div class="list-header">
@@ -301,6 +300,11 @@
         alert(data.message);
     });
 
+    // WebRTC Implementation
+    // The following code handles the WebRTC connections for voice and video chat.
+    // It uses Socket.IO for signaling to establish peer-to-peer connections.
+    // The implementation includes creating peer connections, handling ICE candidates,
+    // creating offers and answers, and managing media streams.
     // WebRTC Listeners
     socket.on('user_joined_voice', (data) => {
         console.log('user joined voice', data);
@@ -383,6 +387,8 @@
     // Modify the join voice channel to start media
     const originalJoinVoice = (channel) => {
         console.log('Joining voice channel', channel.id);
+        document.getElementById('video-grid').style.display = 'grid';
+        document.getElementById('voice-controls').style.display = 'flex';
         startMedia().then(() => {
             socket.emit('join_voice_channel', { channel_id: channel.id });
         });
@@ -445,18 +451,13 @@
         }
         const videoGrid = document.getElementById('video-grid');
         videoGrid.innerHTML = '';
+        videoGrid.style.display = 'none';
+        document.getElementById('voice-controls').style.display = 'none';
         if (currentChannelId) {
             socket.emit('leave_voice_channel', { channel_id: currentChannelId });
         }
     };
 
-    document.getElementById('update-btn').onclick = () => {
-        fetch('/update')
-            .then(response => response.text())
-            .then(data => {
-                alert(data);
-            });
-    };
 
   </script>
 </body>

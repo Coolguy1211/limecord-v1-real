@@ -6,7 +6,6 @@ import sqlite3
 import uuid
 import os
 import mimetypes
-import updater
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "secret!"
@@ -421,10 +420,6 @@ def handle_answer(data):
 def handle_ice_candidate(data):
     emit('ice_candidate', data, to=data['target_sid'])
 
-@app.route("/update")
-def update_app():
-    updater.update_application()
-    return "Checking for updates. See console for details."
 
 if __name__ == "__main__":
     init_db()
