@@ -235,30 +235,38 @@
         const li = document.createElement('li');
         li.className = 'message';
 
+        const avatarImg = document.createElement('img');
+        avatarImg.src = data.avatar_url || '/static/default-avatar.png';
+        avatarImg.className = 'avatar';
+        li.appendChild(avatarImg);
+
+        const messageContentDiv = document.createElement('div');
+        messageContentDiv.className = 'message-content';
+
         const userSpan = document.createElement('span');
         userSpan.className = 'username';
         userSpan.innerText = data.user;
-
-        li.appendChild(userSpan);
+        messageContentDiv.appendChild(userSpan);
 
         if (data.is_image) {
             const img = document.createElement('img');
             img.src = data.message;
-            li.appendChild(img);
+            messageContentDiv.appendChild(img);
         } else if (data.filename) { // It's a file, not a regular message
             const fileLink = document.createElement('a');
             fileLink.href = data.message;
             fileLink.innerText = data.filename;
             fileLink.target = "_blank"; // Open in new tab
             fileLink.className = 'file-link';
-            li.appendChild(fileLink);
+            messageContentDiv.appendChild(fileLink);
         }
         else {
             const messageSpan = document.createElement('span');
             messageSpan.className = 'message-text';
             messageSpan.innerText = data.message;
-            li.appendChild(messageSpan);
+            messageContentDiv.appendChild(messageSpan);
         }
+        li.appendChild(messageContentDiv);
         messagesUl.appendChild(li);
         messagesUl.scrollTop = messagesUl.scrollHeight;
     }
@@ -268,12 +276,25 @@
         friendsUl.innerHTML = '';
         friends.forEach(friend => {
             const li = document.createElement('li');
-            li.innerText = friend;
+            li.dataset.friendUsername = friend.username;
+            const statusIndicator = document.createElement('span');
+            statusIndicator.className = `status-indicator ${friend.status}`;
+            li.appendChild(statusIndicator);
+            const friendName = document.createTextNode(friend.username);
+            li.appendChild(friendName);
             li.onclick = () => {
-                socket.emit('open_dm', friend);
+                socket.emit('open_dm', friend.username);
             };
             friendsUl.appendChild(li);
         });
+    });
+
+    socket.on('status_change', (data) => {
+        const friendLi = document.querySelector(`[data-friend-username="${data.username}"]`);
+        if (friendLi) {
+            const statusIndicator = friendLi.querySelector('.status-indicator');
+            statusIndicator.className = `status-indicator ${data.status}`;
+        }
     });
 
     socket.on('friend_requests', (requests) => {

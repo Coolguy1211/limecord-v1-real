@@ -113,6 +113,28 @@ body, html {
     padding: 10px;
     border-radius: 5px;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.status-indicator {
+    height: 10px;
+    width: 10px;
+    border-radius: 50%;
+    margin-right: 10px;
+    background-color: #747f8d; /* Offline */
+}
+
+.status-indicator.online {
+    background-color: #43b581; /* Online */
+}
+
+.status-indicator.away {
+    background-color: #faa61a; /* Away */
+}
+
+.status-indicator.dnd {
+    background-color: #f04747; /* Do Not Disturb */
 }
 
 #channels li:hover {
@@ -143,6 +165,18 @@ body, html {
 
 .message {
     margin-bottom: 20px;
+    display: flex;
+    align-items: flex-start;
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    margin-right: 15px;
+}
+
+.message-content {
     display: flex;
     flex-direction: column;
 }

@@ -20,7 +20,15 @@ def init_db():
         os.makedirs(UPLOADS_DIR)
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, avatar_url TEXT DEFAULT '/static/default-avatar.png', status TEXT DEFAULT 'offline')")
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN avatar_url TEXT DEFAULT '/static/default-avatar.png'")
+        except:
+            pass # Column already exists
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'offline'")
+        except:
+            pass # Column already exists
         cursor.execute("CREATE TABLE IF NOT EXISTS servers (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
         cursor.execute("CREATE TABLE IF NOT EXISTS server_members (id INTEGER PRIMARY KEY, user_id INTEGER, server_id INTEGER, FOREIGN KEY(user_id) REFERENCES users(id), FOREIGN KEY(server_id) REFERENCES servers(id))")
         cursor.execute("CREATE TABLE IF NOT EXISTS channels (id INTEGER PRIMARY KEY, name TEXT, server_id INTEGER, type TEXT DEFAULT 'text', FOREIGN KEY(server_id) REFERENCES servers(id))")
@@ -101,7 +109,32 @@ def create_server_page():
 def profile_page(username):
     if "user_id" not in session:
         return redirect(url_for("login"))
-    return render_template("profile.html", username=username)
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT avatar_url FROM users WHERE username = ?", (username,))
+        user = cursor.fetchone()
+        avatar_url = user[0] if user else url_for('static', filename='default-avatar.png')
+    return render_template("profile.html", username=username, avatar_url=avatar_url)
+
+@app.route('/upload_avatar', methods=['POST'])
+def upload_avatar():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    if 'avatar' not in request.files:
+        return 'No file part'
+    file = request.files['avatar']
+    if file.filename == '':
+        return 'No selected file'
+    if file:
+        filename = f"{session['user_id']}_{file.filename}"
+        filepath = os.path.join(UPLOADS_DIR, filename)
+        file.save(filepath)
+        avatar_url = f"/uploads/{filename}"
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET avatar_url = ? WHERE id = ?", (avatar_url, session['user_id']))
+            conn.commit()
+        return redirect(url_for('profile_page', username=session['username']))
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
@@ -112,7 +145,15 @@ def on_connect():
     if "user_id" in session:
         user_id = session["user_id"]
         username = session["username"]
-        users[request.sid] = {"user_id": user_id, "username": username, "current_channel": None, "current_dm_partner": None}
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET status = 'online' WHERE id = ?", (user_id,))
+            conn.commit()
+            cursor.execute("SELECT avatar_url FROM users WHERE id = ?", (user_id,))
+            user = cursor.fetchone()
+            avatar_url = user[0] if user else url_for('static', filename='default-avatar.png')
+        users[request.sid] = {"user_id": user_id, "username": username, "avatar_url": avatar_url, "status": "online", "current_channel": None, "current_dm_partner": None}
+        emit('status_change', {'username': username, 'status': 'online'}, broadcast=True)
         get_servers()
         get_friends_list()
         get_friend_requests()
@@ -177,8 +218,8 @@ def join_channel(channel_id):
         users[request.sid]['current_dm_partner'] = None  # Not in a DM
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT u.username, m.message, m.is_image, m.filename FROM messages m JOIN users u ON m.user_id = u.id WHERE m.channel_id = ? ORDER BY m.id ASC", (channel_id,))
-            messages = [{"user": row[0], "message": row[1], "is_image": row[2], "filename": row[3]} for row in cursor.fetchall()]
+            cursor.execute("SELECT u.username, m.message, m.is_image, m.filename, u.avatar_url FROM messages m JOIN users u ON m.user_id = u.id WHERE m.channel_id = ? ORDER BY m.id ASC", (channel_id,))
+            messages = [{"user": row[0], "message": row[1], "is_image": row[2], "filename": row[3], "avatar_url": row[4]} for row in cursor.fetchall()]
             emit('history', messages)
 
 @socketio.on('open_dm')
@@ -194,12 +235,12 @@ def open_dm(friend_username):
                 users[request.sid]['current_dm_partner'] = friend_id
                 users[request.sid]['current_channel'] = None # Not in a channel
                 cursor.execute("""
-                    SELECT u.username, dm.message, dm.is_image, dm.filename
+                    SELECT u.username, dm.message, dm.is_image, dm.filename, u.avatar_url
                     FROM direct_messages dm JOIN users u ON dm.sender_id = u.id
                     WHERE (dm.sender_id = ? AND dm.receiver_id = ?) OR (dm.sender_id = ? AND dm.receiver_id = ?)
                     ORDER BY dm.id ASC
                 """, (user_id, friend_id, friend_id, user_id))
-                messages = [{"user": row[0], "message": row[1], "is_image": row[2], "filename": row[3]} for row in cursor.fetchall()]
+                messages = [{"user": row[0], "message": row[1], "is_image": row[2], "filename": row[3], "avatar_url": row[4]} for row in cursor.fetchall()]
                 emit('dm_history', {'friend': friend_username, 'messages': messages})
 
 @socketio.on('send_dm')
@@ -221,7 +262,7 @@ def send_dm(data):
                 recipient_sid = sid
                 break
 
-        new_message = {"user": users[request.sid]['username'], "message": message, "is_image": False}
+        new_message = {"user": users[request.sid]['username'], "message": message, "is_image": False, "avatar_url": users[request.sid]['avatar_url']}
         if recipient_sid:
             emit('new_dm', new_message, to=recipient_sid)
         # also send to self
@@ -239,7 +280,7 @@ def handle_message(msg):
                 cursor = conn.cursor()
                 cursor.execute("INSERT INTO messages (user_id, channel_id, message, is_image) VALUES (?, ?, ?, ?)", (user_info['user_id'], channel_id, msg, False))
                 conn.commit()
-            send({"user": user_info['username'], "message": msg, "is_image": False}, to=channel_id)
+            send({"user": user_info['username'], "message": msg, "is_image": False, "avatar_url": user_info['avatar_url']}, to=channel_id)
 
 @socketio.on('upload')
 def handle_upload(file_data):
@@ -271,7 +312,7 @@ def handle_upload(file_data):
                     recipient_sid = sid
                     break
 
-            new_message = {"user": user_info['username'], "message": file_url, "is_image": is_image, "filename": original_filename}
+            new_message = {"user": user_info['username'], "message": file_url, "is_image": is_image, "filename": original_filename, "avatar_url": user_info['avatar_url']}
             if recipient_sid:
                 emit('new_dm', new_message, to=recipient_sid)
             emit('new_dm', new_message)
@@ -283,11 +324,18 @@ def handle_upload(file_data):
                 cursor.execute("INSERT INTO messages (user_id, channel_id, message, is_image, filename) VALUES (?, ?, ?, ?, ?)",
                                (user_info['user_id'], channel_id, file_url, is_image, original_filename))
                 conn.commit()
-            send({"user": user_info['username'], "message": file_url, "is_image": is_image, "filename": original_filename}, to=channel_id)
+            send({"user": user_info['username'], "message": file_url, "is_image": is_image, "filename": original_filename, "avatar_url": user_info['avatar_url']}, to=channel_id)
 
 @socketio.on('disconnect')
 def on_disconnect():
     if request.sid in users:
+        user_id = users[request.sid]['user_id']
+        username = users[request.sid]['username']
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET status = 'offline' WHERE id = ?", (user_id,))
+            conn.commit()
+        emit('status_change', {'username': username, 'status': 'offline'}, broadcast=True)
         for channel_id, sids in voice_channels.items():
             if request.sid in sids:
                 leave_voice_channel({'channel_id': channel_id})
@@ -349,11 +397,11 @@ def get_friends_list():
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT u.username FROM users u JOIN friends f ON u.id = f.user2_id WHERE f.user1_id = ? AND f.status = 'accepted'
+                SELECT u.username, u.status FROM users u JOIN friends f ON u.id = f.user2_id WHERE f.user1_id = ? AND f.status = 'accepted'
                 UNION
-                SELECT u.username FROM users u JOIN friends f ON u.id = f.user1_id WHERE f.user2_id = ? AND f.status = 'accepted'
+                SELECT u.username, u.status FROM users u JOIN friends f ON u.id = f.user1_id WHERE f.user2_id = ? AND f.status = 'accepted'
             """, (user_id, user_id))
-            friends = [row[0] for row in cursor.fetchall()]
+            friends = [{"username": row[0], "status": row[1]} for row in cursor.fetchall()]
             emit('friend_list', friends)
 
 @socketio.on('get_friend_requests')
@@ -382,6 +430,27 @@ def accept_friend_request(request_id):
                 conn.commit()
                 get_friends_list()
                 get_friend_requests()
+
+@socketio.on('change_status')
+def change_status(new_status):
+    if request.sid in users:
+        user_id = users[request.sid]['user_id']
+        username = users[request.sid]['username']
+        users[request.sid]['status'] = new_status
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET status = ? WHERE id = ?", (new_status, user_id))
+            conn.commit()
+        emit('status_change', {'username': username, 'status': new_status}, broadcast=True)
+
+@socketio.on('get_user_data')
+def get_user_data(username):
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT status, avatar_url FROM users WHERE username = ?", (username,))
+        user = cursor.fetchone()
+        if user:
+            emit('user_data', {'username': username, 'status': user[0], 'avatar_url': user[1]})
 
 voice_channels = {}
 

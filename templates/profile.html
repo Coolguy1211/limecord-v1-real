@@ -31,10 +31,57 @@
 </head>
 <body>
     <div id="profile-container">
+        <img src="{{ avatar_url }}" alt="User Avatar" style="width: 150px; height: 150px; border-radius: 50%;">
         <h1>{{ username }}'s Profile</h1>
-        <p>This is a placeholder for the user profile page.</p>
-        <p>More features coming soon, matey!</p>
-        <a href="/chat?username={{username}}" style="color: #7289da;">Back to Chat</a>
+        <form action="{{ url_for('upload_avatar') }}" method="post" enctype="multipart/form-data">
+            <input type="file" name="avatar" accept="image/*">
+            <input type="submit" value="Upload Avatar">
+        </form>
+        <div>
+            <p>Status: <span id="status-text"></span></p>
+            <select id="status-select">
+                <option value="online">Online</option>
+                <option value="away">Away</option>
+                <option value="dnd">Do Not Disturb</option>
+            </select>
+        </div>
+        <br>
+        <a href="{{ url_for('chat') }}" style="color: #7289da;">Back to Chat</a>
     </div>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        const statusSelect = document.getElementById('status-select');
+        const statusText = document.getElementById('status-text');
+
+        socket.on('connect', () => {
+            // You might want to fetch the current status from the server upon connection
+        });
+
+        statusSelect.addEventListener('change', (e) => {
+            const newStatus = e.target.value;
+            socket.emit('change_status', newStatus);
+        });
+
+        socket.on('status_change', (data) => {
+            if (data.username === '{{ username }}') {
+                statusText.textContent = data.status;
+                statusSelect.value = data.status;
+            }
+        });
+
+        // Fetch initial status
+        // This is a bit of a hack. A better way would be to have an API endpoint or a socket event to get user data.
+        socket.on('connect', () => {
+            socket.emit('get_user_data', '{{ username }}');
+        });
+
+        socket.on('user_data', (data) => {
+            if (data.username === '{{ username }}') {
+                statusText.textContent = data.status;
+                statusSelect.value = data.status;
+            }
+        });
+    </script>
 </body>
 </html>
