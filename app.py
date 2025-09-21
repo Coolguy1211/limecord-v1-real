@@ -29,7 +29,11 @@ def init_db():
             cursor.execute("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'offline'")
         except:
             pass # Column already exists
-        cursor.execute("CREATE TABLE IF NOT EXISTS servers (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS servers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, icon_url TEXT)")
+        try:
+            cursor.execute("ALTER TABLE servers ADD COLUMN icon_url TEXT")
+        except:
+            pass # Column already exists
         cursor.execute("CREATE TABLE IF NOT EXISTS server_members (id INTEGER PRIMARY KEY, user_id INTEGER, server_id INTEGER, FOREIGN KEY(user_id) REFERENCES users(id), FOREIGN KEY(server_id) REFERENCES servers(id))")
         cursor.execute("CREATE TABLE IF NOT EXISTS channels (id INTEGER PRIMARY KEY, name TEXT, server_id INTEGER, type TEXT DEFAULT 'text', FOREIGN KEY(server_id) REFERENCES servers(id))")
         try:
@@ -99,10 +103,31 @@ def chat():
         return redirect(url_for("login"))
     return render_template("chat.html")
 
-@app.route("/create-server")
-def create_server_page():
+@app.route("/create-server", methods=["GET", "POST"])
+def create_server():
     if "user_id" not in session:
         return redirect(url_for("login"))
+    if request.method == "POST":
+        user_id = session["user_id"]
+        server_name = request.form["name"]
+        icon_url = None
+        if "icon" in request.files:
+            icon = request.files["icon"]
+            if icon.filename != "":
+                filename = f"server_{uuid.uuid4()}_{icon.filename}"
+                filepath = os.path.join(UPLOADS_DIR, filename)
+                icon.save(filepath)
+                icon_url = f"/uploads/{filename}"
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO servers (name, icon_url) VALUES (?, ?)", (server_name, icon_url))
+            server_id = cursor.lastrowid
+            cursor.execute("INSERT INTO server_members (user_id, server_id) VALUES (?, ?)", (user_id, server_id))
+            cursor.execute("INSERT INTO channels (name, server_id) VALUES (?, ?)", ("#general", server_id))
+            conn.commit()
+        # Notify all users to update their server list
+        socketio.emit('server_created', {'server_id': server_id, 'server_name': server_name, 'icon_url': icon_url})
+        return redirect(url_for("chat"))
     return render_template("create_server.html")
 
 @app.route("/user/<username>")
@@ -164,23 +189,10 @@ def get_servers():
         user_id = users[request.sid]['user_id']
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT s.id, s.name FROM servers s JOIN server_members sm ON s.id = sm.server_id WHERE sm.user_id = ?", (user_id,))
-            servers = [{"id": row[0], "name": row[1]} for row in cursor.fetchall()]
+            cursor.execute("SELECT s.id, s.name, s.icon_url FROM servers s JOIN server_members sm ON s.id = sm.server_id WHERE sm.user_id = ?", (user_id,))
+            servers = [{"id": row[0], "name": row[1], "icon_url": row[2]} for row in cursor.fetchall()]
             emit('server_list', servers)
 
-@socketio.on('create_server')
-def create_server(server_name):
-    if request.sid in users:
-        user_id = users[request.sid]['user_id']
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO servers (name) VALUES (?)", (server_name,))
-            server_id = cursor.lastrowid
-            cursor.execute("INSERT INTO server_members (user_id, server_id) VALUES (?, ?)", (user_id, server_id))
-            cursor.execute("INSERT INTO channels (name, server_id) VALUES (?, ?)", ("#general", server_id))
-            conn.commit()
-        get_servers() # Refresh list for the user
-        emit('server_created', {'server_id': server_id, 'server_name': server_name})
 
 @socketio.on('get_channels')
 def get_channels(server_id):
