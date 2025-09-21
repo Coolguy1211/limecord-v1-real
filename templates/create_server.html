@@ -50,33 +50,15 @@
 </head>
 <body>
     <div id="create-server-container">
-        <h1>Give your new server a name</h1>
-        <form id="create-server-form">
-            <input type="text" id="serverName" placeholder="My Awesome Server" required>
-            <button type="submit">Create Server</button>
+        <h1>Create Your Server</h1>
+        <p>Give your server a personality with a name and an icon.</p>
+        <form id="create-server-form" action="/create-server" method="POST" enctype="multipart/form-data">
+            <label for="serverIcon">Server Icon</label>
+            <input type="file" id="serverIcon" name="icon" accept="image/*">
+            <label for="serverName">Server Name</label>
+            <input type="text" id="serverName" name="name" placeholder="My Awesome Server" required>
+            <button type="submit">Create</button>
         </form>
     </div>
-
-    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
-    <script>
-        const socket = io();
-
-        // This page relies on the server-side session to identify the logged-in user.
-        // The previous implementation tried to pass the username as a URL parameter,
-        // which was unreliable and has been removed. The backend `create_server`
-        // event handler correctly uses the user's session.
-        document.getElementById('create-server-form').onsubmit = (e) => {
-            e.preventDefault();
-            const serverNameInput = document.getElementById('serverName');
-            if (serverNameInput.value) {
-                socket.emit('create_server', serverNameInput.value);
-            }
-        };
-
-        socket.on('server_created', (data) => {
-            // Redirect to the chat page, which will load the new server list
-            window.location.href = `/chat`;
-        });
-    </script>
 </body>
 </html>
